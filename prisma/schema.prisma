@@ -1,0 +1,119 @@
+// Tradebook data model.
+// Offline-first conventions for every synced table:
+//   - `id` is a UUID generated on the client (so records can be created offline)
+//   - `updatedAt` drives incremental sync (pull = "give me everything changed since X")
+//   - `deletedAt` is a soft-delete tombstone so deletions propagate to other devices
+
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "esm"
+  importFileExtension = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           String    @id @default(uuid()) @db.Uuid
+  name         String
+  email        String    @unique
+  phone        String?
+  passwordHash String
+  businessName String?
+  currency     String    @default("GHS")
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  products       Product[]
+  customers      Customer[]
+  stockMovements StockMovement[]
+  creditEntries  CreditEntry[]
+}
+
+model Product {
+  id           String    @id @db.Uuid
+  userId       String    @db.Uuid
+  name         String
+  sku          String?
+  unit         String    @default("pcs")
+  costPrice    Decimal   @default(0) @db.Decimal(12, 2)
+  sellPrice    Decimal   @default(0) @db.Decimal(12, 2)
+  quantity     Decimal   @default(0) @db.Decimal(12, 3)
+  lowStockAt   Decimal?  @db.Decimal(12, 3)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  movements StockMovement[]
+
+  @@index([userId, updatedAt])
+}
+
+enum StockMovementType {
+  PURCHASE
+  SALE
+  ADJUSTMENT
+  RETURN
+}
+
+model StockMovement {
+  id         String            @id @db.Uuid
+  userId     String            @db.Uuid
+  productId  String            @db.Uuid
+  type       StockMovementType
+  quantity   Decimal           @db.Decimal(12, 3)
+  unitPrice  Decimal?          @db.Decimal(12, 2)
+  note       String?
+  occurredAt DateTime
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+  deletedAt  DateTime?
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([userId, updatedAt])
+}
+
+model Customer {
+  id        String    @id @db.Uuid
+  userId    String    @db.Uuid
+  name      String
+  phone     String?
+  note      String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  creditEntries CreditEntry[]
+
+  @@index([userId, updatedAt])
+}
+
+enum CreditEntryType {
+  CREDIT  // customer took goods on credit (owes more)
+  PAYMENT // customer paid back (owes less)
+}
+
+model CreditEntry {
+  id         String          @id @db.Uuid
+  userId     String          @db.Uuid
+  customerId String          @db.Uuid
+  type       CreditEntryType
+  amount     Decimal         @db.Decimal(12, 2)
+  note       String?
+  dueDate    DateTime?
+  occurredAt DateTime
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+  deletedAt  DateTime?
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([userId, updatedAt])
+}
